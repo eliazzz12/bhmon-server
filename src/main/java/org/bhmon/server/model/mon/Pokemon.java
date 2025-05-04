@@ -1,29 +1,17 @@
 package org.bhmon.server.model.mon;
 
+import static org.bhmon.codes.Codes.*;
 import java.util.Objects;
 
+import static org.bhmon.codes.Codes.monsMap;
+
 public class Pokemon implements Comparable{
-    public enum types{
-        FIRE, WATER, OTHER
-    }
-
-    // Ids de los pokemon
-    public static final int DELIBIRD_NUM = 0;
-    public static final int TAUROS_NUM = 1;
-    public static final int TORKOAL_NUM = 2;
-    public static final int PELIPPER_NUM = 3;
-    public static final int FARIGIRAF_NUM = 4;
-    public static final int KINGAMBIT_NUM = 5;
-    public static final int MEOWTH_NUM = 6;
-    public static final int AZUMARRILL_NUM = 7;
-    public static final int FUECOCO_NUM = 8;
-
     private int id, number, quantity, power, powerLoweredTimes=0;
     private String name;
-    private types type;
+    private Types type;
     private boolean activeAbility;
 
-    public Pokemon(int number, int quantity, String name, types type){
+    public Pokemon(int number, int quantity, String name, Types type){
         setNumber(number);
         setQuantity(quantity);
         setPower(this.number);
@@ -87,8 +75,8 @@ public class Pokemon implements Comparable{
     }
 
     public int updatePower(int n){
-        if(this.number == KINGAMBIT_NUM && n == -1){
-            n = 1;
+        if(this.number == monsMap.get(Mons.KINGAMBIT) && n == -1){
+            n = 2;
         }
         power += n;
         return n;
@@ -114,7 +102,7 @@ public class Pokemon implements Comparable{
         this.name = name;
     }
 
-    private void setType(types type) {
+    private void setType(Types type) {
         this.type = type;
     }
 
@@ -146,7 +134,7 @@ public class Pokemon implements Comparable{
         return name;
     }
 
-    public types getType() {
+    public Types getType() {
         return type;
     }
 

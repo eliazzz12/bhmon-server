@@ -1,7 +1,6 @@
 package org.bhmon.server.model.mon;
 
-import org.bhmon.server.model.mon.Pokemon.types;
-import static org.bhmon.server.model.mon.Pokemon.*;
+import static org.bhmon.codes.Codes.*;
 
 import java.util.*;
 
@@ -40,15 +39,15 @@ public class MonGenerator {
 
     private static List<Pokemon> createMonsList(){
         List<Pokemon> list = new ArrayList<>();
-        list.add(new Pokemon(DELIBIRD_NUM, DELIBIRD_QUANTITY, "Delibird", types.OTHER));
-        list.add(new Pokemon(TAUROS_NUM, TAUROS_QUANTITY, "Tauros", types.OTHER));
-        list.add(new Pokemon(TORKOAL_NUM, TORKOAL_QUANTITY, "Torkoal", types.FIRE));
-        list.add(new Pokemon(PELIPPER_NUM, PELIPPER_QUANTITY, "Pelipper", types.WATER));
-        list.add(new Pokemon(FARIGIRAF_NUM, FARIGIRAF_QUANTITY, "Farigiraf", types.OTHER));
-        list.add(new Pokemon(KINGAMBIT_NUM, KINGAMBIT_QUANTITY, "Kingambit", types.OTHER));
-        list.add(new Pokemon(MEOWTH_NUM, MEOWTH_QUANTITY, "Meowth", types.OTHER));
-        list.add(new Pokemon(AZUMARRILL_NUM, AZUMARRILL_QUANTITY, "Azumarrill", types.WATER));
-        list.add(new Pokemon(FUECOCO_NUM, FUECOCO_QUANTITY, "Fuecoco", types.FIRE));
+        list.add(new Pokemon(monsMap.get(Mons.DELIBIRD), DELIBIRD_QUANTITY, "Delibird", Types.OTHER));
+        list.add(new Pokemon(monsMap.get(Mons.TAUROS), TAUROS_QUANTITY, "Tauros", Types.OTHER));
+        list.add(new Pokemon(monsMap.get(Mons.TORKOAL), TORKOAL_QUANTITY, "Torkoal", Types.FIRE));
+        list.add(new Pokemon(monsMap.get(Mons.PELIPPER), PELIPPER_QUANTITY, "Pelipper", Types.WATER));
+        list.add(new Pokemon(monsMap.get(Mons.FARIGIRAF), FARIGIRAF_QUANTITY, "Farigiraf", Types.OTHER));
+        list.add(new Pokemon(monsMap.get(Mons.KINGAMBIT), KINGAMBIT_QUANTITY, "Kingambit", Types.OTHER));
+        list.add(new Pokemon(monsMap.get(Mons.MEOWTH), MEOWTH_QUANTITY, "Meowth", Types.OTHER));
+        list.add(new Pokemon(monsMap.get(Mons.AZUMARRILL), AZUMARRILL_QUANTITY, "Azumarrill", Types.WATER));
+        list.add(new Pokemon(monsMap.get(Mons.FUECOCO), FUECOCO_QUANTITY, "Fuecoco", Types.FIRE));
         return list;
     }
 }

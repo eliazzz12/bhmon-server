@@ -1,37 +1,35 @@
 package org.bhmon.server.model;
 
+import org.bhmon.server.model.exceptions.InvalidStolenMonException;
+import org.bhmon.server.model.exceptions.MonNotFoundException;
+import org.bhmon.server.model.exceptions.MonStolenException;
 import org.bhmon.server.model.mon.MonGenerator;
 import org.bhmon.server.model.mon.Pokemon;
-import org.bhmon.server.model.user.Move;
+import org.bhmon.server.model.user.Action;
 import org.bhmon.server.model.user.Player;
 import org.bhmon.server.model.user.User;
 
 import java.io.IOException;
 import java.util.*;
 
-import static org.bhmon.server.model.mon.Pokemon.*;
+import static org.bhmon.codes.Codes.*;
+import static org.bhmon.codes.Codes.Results.*;
+import static org.bhmon.codes.Codes.Types.FIRE;
+import static org.bhmon.codes.Codes.Types.WATER;
+import static org.bhmon.codes.Codes.Weather.RAIN_WEATHER;
+import static org.bhmon.codes.Codes.Weather.SUN_WEATHER;
 
 public class Match implements Runnable{
-    public static final int TIE = 0;
-    public static final int YOU = 1;
-    public static final int RIVAL = 2;
-
-    private final static int WEATHER = 100;
-    public final static int NO_WEATHER = 101;
-    public final static int SUN_WEATHER = 102;
-    public final static int RAIN_WEATHER = 103;
-
-
     // TODO campo id
     private final int turns, pointsToWin;
-    private int weather;
+    private Weather weather;
     private final Player p1, p2;
     private Player matchWinner, battleWinner, turnPlayer;
     private Stack<Pokemon> stack;
     private final Stack<Pokemon> STACK_INITIAL;
     private Pokemon drawedMon;
     private boolean rejected, stolen;
-    private Queue<Move> moves;
+    private Queue<Action> actions;
 
 
     public Match(User u1, User u2, int turns, int pointsToWin) throws IOException {
@@ -43,7 +41,7 @@ public class Match implements Runnable{
         stack = STACK_INITIAL;
         turnPlayer = selectRandomPlayer();
         rejected = false;
-        weather = NO_WEATHER;
+        weather = Weather.NO_WEATHER;
     }
 
     @Override
@@ -76,9 +74,9 @@ public class Match implements Runnable{
         for(int i=0; i<turns; i++){
             do{
                 drawMon(turnPlayer);
-                Move move = turnPlayer.getMove();
-                execute(move);
-                moves.add(move);
+                Action action = turnPlayer.getAction();
+                execute(action);
+                actions.add(action);
             } while(rejected);
             changeTurn();
         }
@@ -110,27 +108,28 @@ public class Match implements Runnable{
         }
     }
 
-    private void execute(Move move){
-        int action = move.getAction();
+    private void execute(Action action){
+        PlayerActions move = playerActionsMap.getKey(action.getMove());
         rejected = false;
-
         try {
-            switch (action) {
-                case Move.SET_BATTLE_MON:
-                    turnPlayer.setBattleMon(drawedMon, true);
-                    otherPlayer(turnPlayer).setBattleMon(null, false);
+            switch (move) {
+                case PlayerActions.SET_BATTLE_MON:
+                    Pokemon newTeamMon = turnPlayer.replaceBattleMon(drawedMon, true);
+                    otherPlayer(turnPlayer).replaceBattleMon(drawedMon, false);
+                    turnPlayer.addToTeam(newTeamMon, true);
+                    otherPlayer(turnPlayer).addToTeam(newTeamMon, false);
                     break;
-                case Move.ADD_TO_TEAM:
+                case PlayerActions.ADD_TO_TEAM:
                     turnPlayer.addToTeam(drawedMon, true);
-                    otherPlayer(turnPlayer).addToTeam(null, false);
+                    otherPlayer(turnPlayer).addToTeam(drawedMon, false);
                     break;
-                case Move.REJECT:
+                case PlayerActions.REJECT:
                     rejected = true;
                     turnPlayer.reject(true);
                     otherPlayer(turnPlayer).reject(false);
                     break;
-                case Move.SET_ACTIVE_MON:
-                    turnPlayer.setActiveAbilityMon(move.getTarget());
+                case PlayerActions.SET_ACTIVE_MON:
+                    turnPlayer.setActiveAbilityMon(boardElementsMap.getKey(action.getTarget()));
                     break;
             }
         } catch(IOException e){
@@ -140,114 +139,120 @@ public class Match implements Runnable{
 
     private void drawMon(Player player) throws IOException {
         drawedMon = stack.pop();
-        player.drawMon(drawedMon.getNumber());
+        player.drawMon(monsMap.getKey(drawedMon.getNumber()));
     }
 
     private void activateActiveAbilities() throws IOException {
         Pokemon p1ActiveMon = p1.getActiveAbilityMon();
         Pokemon p2ActiveMon = p2.getActiveAbilityMon();
+        Player first = null, second = null;
 
         if(p1ActiveMon != null && p2ActiveMon != null){
-            // Se activa primero la del pokemon con número mayor
-            if(p1ActiveMon.getNumber() >= p2ActiveMon.getNumber()){
-                activateActiveAbility(p1);
-                if(stolen){
-                    if(p1.getActiveAbilityMon() != null){
-                        activateActiveAbility(p1);
-                    }
-                } else {
-                    activateActiveAbility(p2);
-                }
+            if(p1ActiveMon.getNumber() >= p2ActiveMon.getNumber()) {
+                first = p1;
+                second = p2;
             } else {
-                activateActiveAbility(p2);
-                if(stolen){
-                    if(p2.getActiveAbilityMon() != null){
-                        activateActiveAbility(p2);
-                    }
-                } else {
-                    activateActiveAbility(p1);
-                }
+                first = p2;
+                second = p1;
             }
         } else if(p1ActiveMon != null){
-            activateActiveAbility(p1);
+            first = p1;
         } else if(p2ActiveMon != null){
-            activateActiveAbility(p2);
+            first = p2;
+        }
+
+        try{
+            activateActiveAbility(first);
+            activateActiveAbility(second);
+        } catch (MonStolenException _){
+            activateActiveAbility(first);
         }
     }
 
-    private void activateActiveAbility(Player p) throws IOException {
-        Pokemon mon = p.getActiveAbilityMon();
-        if(mon != null){
-            int index = p.getActiveAbilityMonIndex();
-            p1.activateActiveMon(index, isSamePlayer(p, p1));
-            p2.activateActiveMon(index, isSamePlayer(p, p2));
+    private void activateActiveAbility(Player p) throws IOException, MonStolenException {
+        if(p != null){
+            try {
+                Pokemon mon = p.getActiveAbilityMon();
+                mon.setActiveAbility(false);
+                Mons monName = monsMap.getKey(mon.getNumber());
 
-            switch(mon.getNumber()){
-                case MEOWTH_NUM:
-                    stolen = true;
-                    stealMon(mon);
-                    break;
-                case FARIGIRAF_NUM:
-                    p1.updateMonPower(2, isSamePlayer(p, p1));
-                    p2.updateMonPower(2, isSamePlayer(p, p2));
-                    break;
-                case PELIPPER_NUM:
-                    p1.updateWeather(RAIN_WEATHER);
-                    p2.updateWeather(RAIN_WEATHER);
-                    break;
-                case TORKOAL_NUM:
-                    p1.updateWeather(SUN_WEATHER);
-                    p2.updateWeather(SUN_WEATHER);
-                    break;
-                case DELIBIRD_NUM:
-                    p1.updatePoints(1, isSamePlayer(p, p1));
-                    p2.updatePoints(1, isSamePlayer(p, p2));
-                    break;
-            }
-            mon.setActiveAbility(false);
+                switch (monName) {
+                    case MEOWTH:
+                        stealMon(p);
+                        throw new MonStolenException();
+                    case FARIGIRAF:
+                        Pokemon battleMon = p.getBattleMon();
+                        p1.updateMonPower(battleMon, 2, isSamePlayer(p, p1));
+                        p2.updateMonPower(battleMon, 2, isSamePlayer(p, p2));
+                        break;
+                    case PELIPPER:
+                        p1.updateWeather(RAIN_WEATHER);
+                        p2.updateWeather(RAIN_WEATHER);
+                        break;
+                    case TORKOAL:
+                        p1.updateWeather(SUN_WEATHER);
+                        p2.updateWeather(SUN_WEATHER);
+                        break;
+                    case DELIBIRD:
+                        p1.updatePoints(1, isSamePlayer(p, p1));
+                        p2.updatePoints(1, isSamePlayer(p, p2));
+                        break;
+                }
+            } catch (MonNotFoundException _){}
         }
     }
 
-    private void stealMon(Player trainer){
-        int target = trainer.getTarget();
+    private void stealMon(Player trainer) throws IOException, InvalidStolenMonException, MonStolenException {
+        BoardElements target = trainer.getTarget();
+        int index = boardElementsMap.get(target);
+        if(index < 1 || index > 3){
+            throw new InvalidStolenMonException();
+        }
 
-
-        Pokemon stolenMon = otherPlayer(turnPlayer).removeMon(target);
-        turnPlayer.addToTeam(stolenMon);
-
-        stolen = true;
+        // Mostrar visualmente
+        BoardElements stolenMonElement = boardElementsMap.getKey(index);
+        Pokemon stolenMon = otherPlayer(trainer).removeMon(stolenMonElement, true);
+        trainer.addToTeam(stolenMon, true);
+        otherPlayer(trainer).addToTeam(stolenMon, false);
     }
 
     private void activatePasiveAbilities() throws IOException {
         // Se activan de menor a mayor número
-        List<Pokemon> monsInBattle = new ArrayList<>(p1.getTeam());
-        monsInBattle.addAll(p2.getTeam());
+        List<Pokemon> monsInBattle = new ArrayList<>();
+        monsInBattle.addAll(List.of(p1.getTeam()));
+        monsInBattle.addAll(List.of(p2.getTeam()));
         Collections.sort(monsInBattle);
 
         for(Pokemon mon : monsInBattle){
-            int number = mon.getNumber();
-            Player trainer = (p1.getTeam().contains(mon) ? p1 : p2);
+            Player trainer = (p1.hasMon(mon) ? p1 : p2);
+            Mons monNumber = monsMap.getKey(mon.getNumber());
 
-            switch(number){
-                case TAUROS_NUM:
+            // Marcar como activo al mon
+            int boardElemId = trainer.getMonIndex(mon);
+            trainer.getSender().setActiveMon(boardElementsMap.getKey(boardElemId), true);
+            otherPlayer(trainer).getSender().setActiveMon(boardElementsMap.getKey(boardElemId), false);
+
+            Pokemon battleMon;
+            switch(monNumber){
+                case TAUROS:
                     // El pokémon combatiente del rival recibe un -1
-                    trainer.getSender().setActiveElement(trainer.getIndex(mon));
-
-                    trainer.updateMonPower(-1, false);
-                    otherPlayer(trainer).updateMonPower(-1, true);
+                    battleMon = otherPlayer(trainer).getBattleMon();
+                    trainer.updateMonPower(battleMon, -1, false);
+                    otherPlayer(trainer).updateMonPower(battleMon, -1, true);
                     break;
-                // Kingambit tiene habilidad pasiva pero se activa sola si es necesario
-                case AZUMARRILL_NUM:
+                // Kingambit tiene habilidad pasiva pero se activa sola si es necesario //TODO mostrar activo cuando sucede
+                case AZUMARRILL:
                     // Azumarrill tiene un +1
-                    trainer.updateMonPower(1, true);
-                    otherPlayer(trainer).updateMonPower(1, false);
+                    battleMon = trainer.getBattleMon();
+                    trainer.updateMonPower(battleMon, 1, true);
+                    otherPlayer(trainer).updateMonPower(battleMon, 1, false);
                     break;
-                case FUECOCO_NUM:
+                case FUECOCO:
                     // Restablece los cambios en el poder del rival
-                    Pokemon rivalMon = otherPlayer(trainer).getBattleMon();
-                    int dif = rivalMon.getNumber() - rivalMon.getPower();
-                    trainer.updateMonPower(dif, false);
-                    otherPlayer(trainer).updateMonPower(dif, true);
+                    battleMon = otherPlayer(trainer).getBattleMon();
+                    int dif = battleMon.getNumber() - battleMon.getPower();
+                    trainer.updateMonPower(battleMon, dif, false);
+                    otherPlayer(trainer).updateMonPower(battleMon, dif, true);
             }
         }
 
@@ -255,43 +260,40 @@ public class Match implements Runnable{
 
     private void checkWeather() throws IOException {
         // Indicar a los clientes que se está comprobando el tiempo
-        try {
-            p1.getSender().setActiveElement(WEATHER);
-            p2.getSender().setActiveElement(WEATHER);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        p1.getSender().setActiveElement(BoardElements.WEATHER);
+        p2.getSender().setActiveElement(BoardElements.WEATHER);
 
-        checkWeatherEffect(weather, p1);
-        checkWeatherEffect(weather, p2);
+        checkWeatherEffect(p1);
+        checkWeatherEffect(p2);
 
 
     }
 
-    public void checkWeatherEffect(int weather, Player p) throws IOException {
-        Pokemon.types bmonType = p.getBattleMon().getType();
+    public void checkWeatherEffect(Player p) throws IOException {
+        Pokemon battleMon = p.getBattleMon();
+        Types bmonType = battleMon.getType();
         int dif = 0;
 
         switch(weather){
             case SUN_WEATHER -> {
-                if(bmonType == Pokemon.types.FIRE){
+                if(bmonType == FIRE){
                     dif = 1;
-                } else if(bmonType == Pokemon.types.WATER){
+                } else if(bmonType == WATER){
                     dif = -1;
                 }
             }
             case RAIN_WEATHER -> {
-                if(bmonType == Pokemon.types.WATER){
+                if(bmonType == WATER){
                     dif = 1;
-                } else if(bmonType == Pokemon.types.FIRE){
+                } else if(bmonType == FIRE){
                     dif = -1;
                 }
             }
         }
 
         if(dif != 0){
-            p1.updateMonPower(dif, isSamePlayer(p, p1));
-            p2.updateMonPower(dif, isSamePlayer(p, p2));
+            p1.updateMonPower(battleMon, dif, isSamePlayer(p, p1));
+            p2.updateMonPower(battleMon, dif, isSamePlayer(p, p2));
         }
 
     }
@@ -316,14 +318,14 @@ public class Match implements Runnable{
 
     private void sendBattleWinnerInfo() throws IOException {
         if(battleWinner == p1){
-            p1.setBattleResult(YOU);
-            p2.setBattleResult(RIVAL);
+            p1.setBattleResult(Results.YOU);
+            p2.setBattleResult(Results.RIVAL);
         } else if(battleWinner == p2){
-            p2.setBattleResult(YOU);
-            p1.setBattleResult(RIVAL);
+            p2.setBattleResult(Results.YOU);
+            p1.setBattleResult(Results.RIVAL);
         } else if(battleWinner == null){
-            p1.setBattleResult(TIE);
-            p2.setBattleResult(TIE);
+            p1.setBattleResult(Results.TIE);
+            p2.setBattleResult(Results.TIE);
         }
     }
 

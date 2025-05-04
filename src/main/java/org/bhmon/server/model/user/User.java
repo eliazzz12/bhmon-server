@@ -1,7 +1,7 @@
 package org.bhmon.server.model.user;
 
-import org.bhmon.server.io.InputReceiver;
-import org.bhmon.server.io.OutputSender;
+import org.bhmon.server.io.comms.InputReceiver;
+import org.bhmon.server.io.comms.OutputSender;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -21,6 +21,9 @@ public class User {
         setPicture(picture);
     }
 
+    public String readString() throws IOException {
+        return receiver.readString();
+    }
 
     public InputReceiver getReceiver() {
         return receiver;
